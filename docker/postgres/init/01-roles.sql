@@ -1,0 +1,10 @@
+-- App role: NOT superuser, does NOT bypass RLS. Dev password only.
+CREATE ROLE stocksafe_app LOGIN PASSWORD 'stocksafe_app'
+  NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS;
+
+GRANT USAGE ON SCHEMA public TO stocksafe_app;
+
+ALTER DEFAULT PRIVILEGES FOR ROLE stocksafe IN SCHEMA public
+  GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO stocksafe_app;
+ALTER DEFAULT PRIVILEGES FOR ROLE stocksafe IN SCHEMA public
+  GRANT USAGE, SELECT ON SEQUENCES TO stocksafe_app;

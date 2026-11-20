@@ -1,0 +1,77 @@
+server:
+  port: 8081
+  shutdown: graceful
+
+spring:
+  application:
+    name: stocksafe-alerts
+  lifecycle:
+    timeout-per-shutdown-phase: 20s
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/stocksafe}
+    username: ${DB_APP_USER:stocksafe_app}
+    password: ${DB_APP_PASSWORD:stocksafe_app}
+  flyway:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/stocksafe}
+    user: ${DB_OWNER_USER:stocksafe}
+    password: ${DB_OWNER_PASSWORD:stocksafe}
+    table: flyway_schema_history_alerts     # own history, same database as core
+    baseline-on-migrate: true
+    baseline-version: 0
+  rabbitmq:
+    host: ${RABBIT_HOST:localhost}
+    port: ${RABBIT_PORT:5672}
+    username: ${RABBIT_USER:guest}
+    password: ${RABBIT_PASSWORD:guest}
+    publisher-confirm-type: correlated
+    template:
+      observation-enabled: true
+    listener:
+      simple:
+        observation-enabled: true
+        prefetch: 20
+        default-requeue-rejected: false      # after 5 tries the message goes to the dead-letter queue
+        retry:
+          enabled: true
+          initial-interval: 1s
+          multiplier: 2
+          max-attempts: 5
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true
+  tracing:
+    enabled: ${TRACING_ENABLED:false}   # set true to send traces to Jaeger (docker compose up -d jaeger)
+    sampling:
+      probability: 1.0
+  otlp:
+    tracing:
+      endpoint: ${OTLP_ENDPOINT:http://localhost:4318/v1/traces}
+  metrics:
+    tags:
+      application: stocksafe-alerts
+    distribution:
+      percentiles-histogram:
+        http.server.requests: true
+        stocksafe.alert.latency: true
+        stocksafe.import.duration: true
+
+stocksafe:
+  jwt:
+    secret: ${JWT_SECRET:change-me-change-me-change-me-32bytes!!}
+  cors:
+    allowed-origins: ${CORS_ORIGINS:http://localhost:5173}
+  admin:
+    token: ${ALERTS_ADMIN_TOKEN:}            # empty = DLQ replay endpoint is disabled
+  relay:
+    enabled: true
+  jobs:
+    enabled: true
+  notify:
+    fail-rate: 0.0                           # set 0.5 to see retries and the circuit breaker work

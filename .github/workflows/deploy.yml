@@ -1,0 +1,54 @@
+name: Deploy to AWS
+# Runs after CI is green on main. Uses GitHub OIDC: no long-lived AWS keys are stored.
+# Repository settings needed:
+#   secret AWS_ROLE_ARN   : IAM role GitHub may assume (see README, AWS step 8)
+#   vars   AWS_REGION, ECS_CLUSTER, ECR_CORE, ECR_ALERTS, S3_BUCKET, API_BASE_URL
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  deploy:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { ref: '${{ github.event.workflow_run.head_sha }}' }
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+      - id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and push images
+        run: |
+          TAG=${{ github.event.workflow_run.head_sha }}
+          for svc in core alerts; do
+            REPO=$(echo "${{ steps.ecr.outputs.registry }}/$( [ $svc = core ] && echo '${{ vars.ECR_CORE }}' || echo '${{ vars.ECR_ALERTS }}' )")
+            docker build -f stocksafe-$svc/Dockerfile -t $REPO:$TAG -t $REPO:latest .
+            docker push $REPO:$TAG
+            docker push $REPO:latest
+          done
+
+      - name: Roll out (ECS pulls :latest on a forced deployment)
+        run: |
+          for svc in core alerts; do
+            aws ecs update-service --cluster ${{ vars.ECS_CLUSTER }} --service stocksafe-$svc --force-new-deployment > /dev/null
+          done
+          aws ecs wait services-stable --cluster ${{ vars.ECS_CLUSTER }} --services stocksafe-core stocksafe-alerts
+
+      - uses: actions/setup-node@v4
+        with: { node-version: '20' }
+      - name: Build and publish the web app
+        working-directory: frontend
+        run: |
+          npm ci
+          VITE_API_BASE=${{ vars.API_BASE_URL }} npm run build
+          aws s3 sync dist s3://${{ vars.S3_BUCKET }} --delete

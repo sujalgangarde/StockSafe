@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+  <include resource="org/springframework/boot/logging/logback/defaults.xml"/>
+  <!-- JSON logs (with correlationId and tenantId) when the "json" profile is on, e.g. in Docker/AWS -->
+  <springProfile name="json">
+    <appender name="JSON" class="ch.qos.logback.core.ConsoleAppender">
+      <encoder class="net.logstash.logback.encoder.LogstashEncoder">
+        <includeMdcKeyName>correlationId</includeMdcKeyName>
+        <includeMdcKeyName>tenantId</includeMdcKeyName>
+        <includeMdcKeyName>traceId</includeMdcKeyName>
+      </encoder>
+    </appender>
+    <root level="INFO"><appender-ref ref="JSON"/></root>
+  </springProfile>
+  <springProfile name="!json">
+    <include resource="org/springframework/boot/logging/logback/console-appender.xml"/>
+    <root level="INFO"><appender-ref ref="CONSOLE"/></root>
+  </springProfile>
+</configuration>
